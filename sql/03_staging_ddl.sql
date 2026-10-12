@@ -1,4 +1,7 @@
 
+USE RetailDWH;
+GO
+
 DROP TABLE IF EXISTS stg.Customers;
 GO
 CREATE TABLE stg.Customers (
