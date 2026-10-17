@@ -1,68 +1,59 @@
 # Retail Sales Data Warehouse (RetailDWH)
+**Author:** Mahmoud 
 
-## 📌 Project Overview
-An analytical data warehouse built on SQL Server to analyze retail sales performance. This project transforms a transactional database (RetailOLTP) and external flat files (ProductCatalog) into a Kimball-style dimensional model (Star Schema) to support historical reporting and business intelligence.
+## 1. Runbook & Deployment Guide
+This repository contains the foundational DDL and staging architecture for the RetailDWH project. 
 
-## 📁 Repository Structure
-* `/sql/01_Create_OLTP_Source.sql` - Source system creation
-* `/sql/01b_Insert_OLTP_Sample_Data.sql` - Source system sample data
-* `/sql/02_create_database_and_schemas.sql` - DWH schema architecture (stg, dim, fact, etl)
-* `/sql/03_staging_ddl.sql` - Nuke-and-pave staging tables
-* `/sql/04_dimensions_ddl.sql` - Dimensions (SCD Type 1 & Type 2)
-* `/sql/05_fact_sales_ddl.sql` - Transactional fact table
-* `/sql/06_validation_queries.sql` - Data quality and reporting queries
-* `/docs/SSMS_Database_Diagram.png` - Physical star schema relationship diagram
+**Prerequisites:**
+* SQL Server 2016 or later (required for `DROP TABLE IF EXISTS` syntax).
+* The provided `ProductCatalog_Batch1.csv` file available for staging load.
 
----
+**Execution Order (Must be run sequentially):**
+1. `01_Create_OLTP_Source.sql` (Provided material - creates source `RetailOLTP`)
+2. `01b_Insert_OLTP_Sample_Data.sql` (Provided material - populates source)
+3. `02_create_database_and_schemas.sql` (Creates `RetailDWH` and `stg`, `dim`, `fact`, `etl` schemas)
+4. `03_staging_ddl.sql` (Creates empty staging tables)
+5. `04_dimensions_ddl.sql` (Creates empty dimensions; MUST run before fact)
+6. `05_fact_sales_ddl.sql` (Creates empty fact table with FK constraints)
+7. `06_validation_queries.sql` (Execution baseline and DWH reporting validation)
 
-## 🏗️ Architectural Design Decisions (Lab Explanations)
-
-### 1. Staging Layer Strategy
-Staging tables preserve original source columns, data types, and business IDs without modification. This provides a 1:1 trace back to the source system for auditing and ensures that data extraction is decoupled from heavy ETL transformations.
-
-### 2. Surrogate Keys vs. Business Keys
-Dimension keys (e.g., `ProductKey`) are database-generated surrogate keys (IDENTITY integers), which are completely separate from source business IDs (e.g., `ProductID`). This isolates the data warehouse from source system key reassignments and is strictly required to support multiple historical versions of the same business entity.
-
-### 3. DimProduct & SCD Type 2 Effective-Date Policy
-`DimProduct` implements Slowly Changing Dimension (SCD) Type 2 to preserve historical product pricing and status changes. 
-* **Effective-Date Policy:** Initial loads are assigned a `StartDate` of `'1900-01-01'` to ensure historical orders resolve correctly. The active version maintains an `EndDate` of `'9999-12-31 23:59:59.999'`. When attributes change, the current row's `EndDate` is capped at `SYSDATETIME()`, and a new row is inserted with that exact timestamp as its `StartDate`.
-
-### 4. Degenerate Dimension (OrderID)
-`OrderID` is retained directly inside `FactSales` as a Degenerate Dimension. Because the order number itself contains no descriptive attributes (customer, date, and store are handled by other dimensions), creating a separate `DimOrder` table would cause unnecessary overhead and massive joins. It remains in the fact table to allow grouping of order lines for market basket analysis.
-
-### 5. Fact Table Load Sequence
-`FactSales` must be loaded *after* all dimension keys are generated and available. The fact load relies on looking up source business IDs against the populated dimensions to retrieve the correct surrogate keys before insertion.
+*Note: Staging tables use a drop-and-create strategy for full-refresh isolation. Dimensions and Facts use `IF OBJECT_ID IS NULL` to protect data, meaning schema changes require manual drops or explicit `ALTER` statements.*
 
 ---
 
-## 📜 Business Rules & Handling Policies
-
-* **Revenue Filtering:** Only source orders with `OrderStatus = 'Completed'` are loaded into `FactSales`. Pending and Cancelled orders are excluded from revenue counts.
-* **Calculations:** 
-  * `GrossSales` = `Quantity * UnitPrice`
-  * `NetSales` = `GrossSales - DiscountAmount`
-* **Unknown Member Policy:** Source order lines referencing products missing from the catalog (e.g., OrderLineID 50470 / ProductID 9999) are mapped to a dedicated Unknown member (`ProductKey = -1`). A default `-1` row is seeded into `DimProduct` prior to the fact load to preserve referential integrity without silently dropping revenue data.
+## 2. Source Profiling & Staging Policy
+* **Staging Strategy:** A full-refresh snapshot approach is used for Sprint 01. 
+* **NULL Policy:** All staging columns are intentionally declared as `NULLable` (even if source business keys are `NOT NULL`). This is a deliberate design choice to prevent the ETL pipeline from crashing during extraction. Data quality validation (e.g., catching missing IDs) will be handled downstream before loading into the dimensional layer.
+* **Audit Columns:** To ensure consistency across the warehouse, the tracking column is standardized as `LoadedAt (DATETIME2(3))` across all staging, dimension, and fact tables.
 
 ---
 
-## ⚙️ ETL / SSIS Control Flow Sketch
-1. **Truncate Staging:** Clear all tables in the `stg` schema.
-2. **Extract:** Load raw SQL OLTP tables and the Product CSV into staging.
-3. **Data Quality Check:** Validate data types, handle NULLs, and log exact duplicates.
-4. **Load Dimensions:**
-   * Generate `DimDate` calendar rows.
-   * Process SCD Type 1 updates for `DimCustomer` and `DimStore`.
-   * Process SCD Type 2 historical inserts/closures for `DimProduct`.
-5. **Load Fact Table:**
-   * Join staging orders to dimensions to resolve surrogate keys.
-   * Calculate `GrossSales` and `NetSales`.
-   * Insert new records into `fact.FactSales`.
+## 3. Dimensional Modeling Decisions & Business Rules
+
+### Fact Table Grain & Measures
+* **Documented Grain:** Exactly **one row per source order line**. The `SourceOrderLineID` column has a `UNIQUE` constraint to enforce this grain and prevent duplicate loads.
+* **Degenerate Dimension (OrderID):** `OrderID` is kept directly in `FactSales`. It contains no descriptive attributes of its own but is required to group order lines together for market basket analysis. A separate `DimOrder` table would cause unnecessary overhead.
+* **Measure Nullability:** Fact measures (`Quantity`, `UnitPrice`, etc.) will be strictly enforced as `NOT NULL` during the ETL load process. 
+* **Revenue Filtering:** Only source orders with `OrderStatus = 'Completed'` contribute to `FactSales`. Pending/Cancelled orders are excluded.
+
+### Slowly Changing Dimension (SCD) Policies
+* **DimCustomer & DimStore (SCD Type 1):** Changes to customer or store attributes (e.g., location, email) simply overwrite the existing record. No history is retained.
+* **DimProduct (SCD Type 2):** Preserves pricing and attribute history. `ProductID` is non-unique to allow multiple historical versions.
+  * **Triggers:** A new version is triggered if `UnitCost`, `Category`, `Brand`, or `IsActive` changes. 
+  * **IsActive Status:** `IsActive` represents the product's operational business status. It is treated as a standard tracked attribute, completely independent of the SCD tracking dates.
+  * **Effective-Date Policy (Non-Overlapping):** The initial load sets a default `StartDate` of `'1900-01-01'` to guarantee that historical orders resolve successfully. The current active version maintains an `EndDate` of `'9999-12-31 23:59:59.999'`. Upon an attribute change, the closing record's `EndDate` and the new record's `StartDate` are set to the exact same ETL execution timestamp (`SYSDATETIME()`) to prevent overlapping validity intervals. 
+
+### The Unknown Member Policy (Orphaned Facts)
+The provided source data contains an order line referencing an invalid catalog item (`OrderLineID 50470 / ProductID 9999`). 
+* We will **not** modify the source files to fake a product.
+* Instead, a default **`-1` (Unknown Product)** member will be explicitly inserted into `dim.DimProduct` before the fact load. The ETL pipeline will map any orphaned order lines to this `-1` key, preserving the revenue totals while maintaining the strict `NOT NULL` foreign key constraint on the fact table.
 
 ---
 
-## 📊 Data Validation & Reporting Checks
-*(See `06_validation_queries.sql` for execution code)*
-1. Source orders with 'Completed' status count.
-2. Valid order lines after product lookup.
-3. Fact row count vs. SourceOrderLineID distinct count reconciliation.
-4. Monthly revenue calculation by brand and store.
+## 4. Evidence & Deliverables Checklist
+*(To be populated by the developer prior to submission)*
+* [x] DDL Scripts (`02` through `05`)
+* [x] Validation Queries (`06`)
+* [x] **Screenshot:** Source tables in SSMS Object Explorer (Step 01/02)
+* [x] **Screenshot:** Final Star Schema Relationship Diagram (Step 05)
+* [x] **Output Log:** Successful execution of a clean run
