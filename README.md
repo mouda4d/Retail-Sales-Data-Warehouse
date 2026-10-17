@@ -1,5 +1,6 @@
 # Retail Sales Data Warehouse (RetailDWH)
 **Author:** Mahmoud 
+**GitHub Repository:** https://github.com/mouda4d/Retail-Sales-Data-Warehouse
 
 ## 1. Runbook & Deployment Guide
 This repository contains the foundational DDL and staging architecture for the RetailDWH project. 
