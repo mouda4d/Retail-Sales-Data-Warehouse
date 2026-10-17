@@ -696,7 +696,7 @@ INSERT INTO dbo.OrderLines (OrderLineID, OrderID, ProductID, Quantity, UnitPrice
 (50469, 20180, 1009, 5, 61.79, 0.0, N'2026-09-30 12:00:00'),
 (50470, 20001, 9999, 1, 100.0, 0.0, N'2026-09-30 12:00:00');
 GO
-SELECT 'Customers' AS SourceTable, COUNT(*) AS RowCount FROM dbo.Customers
+SELECT 'Customers' AS SourceTable, COUNT(*) AS Row_Count FROM dbo.Customers
 UNION ALL SELECT 'Stores', COUNT(*) FROM dbo.Stores
 UNION ALL SELECT 'Orders', COUNT(*) FROM dbo.Orders
 UNION ALL SELECT 'OrderLines', COUNT(*) FROM dbo.OrderLines;

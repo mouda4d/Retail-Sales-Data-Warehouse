@@ -1,7 +1,6 @@
-
+-- Create fact table: sales.
 USE RetailDWH;
 GO
-
 IF OBJECT_ID(N'fact.FactSales', N'U') IS NULL
 BEGIN
     CREATE TABLE fact.FactSales (
@@ -26,3 +25,6 @@ BEGIN
     );
 END;
 GO
+/*
+drop table fact.FactSales;
+*/

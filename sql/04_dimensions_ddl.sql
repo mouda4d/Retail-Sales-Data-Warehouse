@@ -1,4 +1,4 @@
-
+-- Create four dimension tables: date, customer, store, product.
 USE RetailDWH;
 GO
 
@@ -12,9 +12,6 @@ BEGIN
         MonthName NVARCHAR(20) NOT NULL,
         QuarterNumber INT NOT NULL,
         YearNumber INT NOT NULL,
-        LoadedAt DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
-        UpdatedAt DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
-        SourceFile NVARCHAR(255)
 	);
 END
 GO
@@ -61,7 +58,7 @@ BEGIN
         Brand NVARCHAR(60),
         UnitCost DECIMAL(12,2),
         IsActive CHAR(1),
-        StartDate DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
+        StartDate DATETIME2(3) NOT NULL DEFAULT '1900-01-01 00:00:00.000',
         EndDate DATETIME2(3) NOT NULL DEFAULT '9999-12-31 23:59:59.999',
         IsCurrent BIT NOT NULL DEFAULT 1,
         LoadedAt DATETIME2(3) NOT NULL DEFAULT SYSDATETIME(),
@@ -70,3 +67,9 @@ BEGIN
 	);
 END
 GO
+/*
+drop table dim.dimproduct;
+drop table dim.dimstore;
+drop table dim.dimcustomer;
+drop table dim.dimdate;
+*/

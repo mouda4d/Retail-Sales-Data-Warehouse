@@ -1,4 +1,4 @@
-
+-- Create DWH database, stg, dim, fact and etl schemas.
 USE master;
 GO
 IF DB_ID(N'RetailDWH') IS NULL CREATE DATABASE RetailDWH;
